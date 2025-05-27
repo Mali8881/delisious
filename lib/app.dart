@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 import 'features/ home/ presentation/ screens/auth_screen.dart';
 import 'features/ home/ presentation/ screens/cart_screen.dart';
@@ -18,16 +19,12 @@ import 'features/ home/ presentation/application/order_provider.dart';
 import 'features/ home/ presentation/application/product_provider.dart';
 import 'data/models/order.dart';
 import 'data/models/product.dart';
-import 'firebase_options.dart'; // ✅ важно!
 
-// import 'features/home/presentation/application/auth_provider.dart'; // если есть
-
-void main() async {
+Future<void> initializeApp() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(const App());
 }
 
 class App extends StatelessWidget {
@@ -35,44 +32,69 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => CategoryProvider()),
-        ChangeNotifierProvider(create: (_) => ProductProvider()),
-        ChangeNotifierProvider(create: (_) => CartProvider()),
-        ChangeNotifierProvider(create: (_) => OrderProvider()),
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-      ],
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'ShopM',
-        theme: ThemeData(
-          primarySwatch: Colors.blue,
-          scaffoldBackgroundColor: Colors.white,
-          fontFamily: 'SF Pro Display',
-        ),
-        initialRoute: '/login',
-        routes: {
-          '/login': (context) => const LoginScreen(),
-          '/register': (context) => const RegisterScreen(),
-          '/main': (context) => const MainNavigation(),
-        },
-        onGenerateRoute: (settings) {
-          if (settings.name == '/payment') {
-            final order = settings.arguments as ShopOrder;
-            return MaterialPageRoute(
-              builder: (context) => PaymentScreen(order: order),
-            );
-          }
-          if (settings.name == '/product-details') {
-            final product = settings.arguments as Product;
-            return MaterialPageRoute(
-              builder: (context) => ProductDetailsScreen(product: product),
-            );
-          }
-          return null;
-        },
-      ),
+    return FutureBuilder(
+      future: initializeApp(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: Text('Error initializing Firebase: ${snapshot.error}'),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.connectionState == ConnectionState.done) {
+          return MultiProvider(
+            providers: [
+              ChangeNotifierProvider(create: (_) => CategoryProvider()),
+              ChangeNotifierProvider(create: (_) => ProductProvider()),
+              ChangeNotifierProvider(create: (_) => CartProvider()),
+              ChangeNotifierProvider(create: (_) => OrderProvider()),
+              ChangeNotifierProvider(create: (_) => AuthProvider()),
+            ],
+            child: MaterialApp(
+              debugShowCheckedModeBanner: false,
+              title: 'ShopM',
+              theme: ThemeData(
+                primarySwatch: Colors.blue,
+                scaffoldBackgroundColor: Colors.white,
+                fontFamily: 'SF Pro Display',
+              ),
+              initialRoute: '/login',
+              routes: {
+                '/login': (context) => const LoginScreen(),
+                '/register': (context) => const RegisterScreen(),
+                '/main': (context) => const MainNavigation(),
+              },
+              onGenerateRoute: (settings) {
+                if (settings.name == '/payment') {
+                  final order = settings.arguments as ShopOrder;
+                  return MaterialPageRoute(
+                    builder: (context) => PaymentScreen(order: order),
+                  );
+                }
+                if (settings.name == '/product-details') {
+                  final product = settings.arguments as Product;
+                  return MaterialPageRoute(
+                    builder: (context) => ProductDetailsScreen(product: product),
+                  );
+                }
+                return null;
+              },
+            ),
+          );
+        }
+
+        return const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          ),
+        );
+      },
     );
   }
 }

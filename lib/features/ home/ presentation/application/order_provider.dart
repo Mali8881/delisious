@@ -1,54 +1,100 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../../data/models/order.dart';
 import '../../../../data/models/cart_item.dart';
 
 class OrderProvider extends ChangeNotifier {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   List<ShopOrder> _orders = [];
 
   List<ShopOrder> get orders => [..._orders];
 
   Future<void> loadOrders() async {
-    if (_orders.isEmpty) {
-      _orders = [
-        ShopOrder(
-          id: 'test1',
-          userId: 'local_user',
-          items: [
-            CartItem(productId: 'p1', quantity: 2, price: 100.0, id: '', productName: '', imageUrl: ''),
-            CartItem(productId: 'p2', quantity: 1, price: 250.0, productName: '', id: '', imageUrl: ''),
-          ],
-          totalAmount: 450.0,
-          createdAt: DateTime.now().subtract(const Duration(days: 1)),
-          deliveryAddress: 'г. Бишкек, ул. Ленина, 123',
-        ),
-      ];
-      notifyListeners();
+    final user = _auth.currentUser;
+    if (user != null) {
+      try {
+        final querySnapshot = await _firestore
+            .collection('orders')
+            .where('userId', isEqualTo: user.uid)
+            .orderBy('createdAt', descending: true)
+            .get();
+
+        _orders = querySnapshot.docs
+            .map((doc) => ShopOrder.fromMap(doc.data()))
+            .toList();
+
+        notifyListeners();
+      } catch (e) {
+        debugPrint('Ошибка загрузки заказов: $e');
+      }
     }
   }
 
-  Future<ShopOrder> createOrder({
+  Future<ShopOrder?> createOrder({
     required List<CartItem> items,
     required double totalAmount,
     required String deliveryAddress,
     required String userId,
   }) async {
-    final orderId = DateTime.now().millisecondsSinceEpoch.toString();
-    final newOrder = ShopOrder(
-      id: orderId,
-      userId: userId,
-      items: items,
-      totalAmount: totalAmount,
-      createdAt: DateTime.now(),
-      deliveryAddress: deliveryAddress,
-    );
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return null;
 
-    _orders.insert(0, newOrder);
-    notifyListeners();
+      final orderId = DateTime.now().millisecondsSinceEpoch.toString();
+      final newOrder = ShopOrder(
+        id: orderId,
+        userId: user.uid,
+        items: items,
+        totalAmount: totalAmount,
+        createdAt: DateTime.now(),
+        deliveryAddress: deliveryAddress,
+      );
 
-    return newOrder;
+      // Сохраняем заказ в Firebase
+      await _firestore.collection('orders').doc(orderId).set(newOrder.toMap());
+
+      // Добавляем заказ в локальный список
+      _orders.insert(0, newOrder);
+      notifyListeners();
+
+      return newOrder;
+    } catch (e) {
+      debugPrint('Ошибка создания заказа: $e');
+      return null;
+    }
   }
 
-  updatePaymentInfo(String id, String paymentId) {}
+  Future<void> updatePaymentInfo(String orderId, String paymentId) async {
+    try {
+      await _firestore.collection('orders').doc(orderId).update({
+        'paymentId': paymentId,
+      });
 
-  updateOrderStatus(String id, OrderStatus processing) {}
+      final orderIndex = _orders.indexWhere((order) => order.id == orderId);
+      if (orderIndex != -1) {
+        _orders[orderIndex].paymentId = paymentId;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Ошибка обновления информации об оплате: $e');
+    }
+  }
+
+  Future<void> updateOrderStatus(String orderId, OrderStatus status) async {
+    try {
+      await _firestore.collection('orders').doc(orderId).update({
+        'status': status.toString(),
+      });
+
+      final orderIndex = _orders.indexWhere((order) => order.id == orderId);
+      if (orderIndex != -1) {
+        _orders[orderIndex].status = status;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Ошибка обновления статуса заказа: $e');
+    }
+  }
 }
